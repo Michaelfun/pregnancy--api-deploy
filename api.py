@@ -7,12 +7,13 @@ and exposes endpoints for making predictions.
 
 import pandas as pd
 import numpy as np
+import joblib
 import json
+import os
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import logging
 import warnings
-from model_loader import load_models
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -21,15 +22,126 @@ logger = logging.getLogger(__name__)
 # Suppress warnings
 warnings.filterwarnings('ignore')
 
+# Define the RuleBasedModel class for loading saved models
+class RuleBasedModel:
+    def __init__(self, ml_model, factor, thresholds, normal_range):
+        self.ml_model = ml_model
+        self.factor = factor
+        self.thresholds = thresholds
+        self.normal_range = normal_range
+        self.classes_ = ml_model.classes_
+    
+    def predict(self, X):
+        value = X.iloc[0][self.factor]
+        
+        # Apply rule-based override for extreme values
+        if self.thresholds['low'] is not None and value < self.thresholds['low']:
+            return np.array(['high'])
+        elif self.thresholds['high'] is not None and value > self.thresholds['high']:
+            return np.array(['high'])
+        else:
+            # For values in the intermediate range, use the ML model
+            return self.ml_model.predict(X)
+    
+    def predict_proba(self, X):
+        value = X.iloc[0][self.factor]
+        
+        # For extreme values, return high confidence
+        if (self.thresholds['low'] is not None and value < self.thresholds['low']) or \
+           (self.thresholds['high'] is not None and value > self.thresholds['high']):
+            if self.classes_[0] == 'normal':
+                return np.array([[0.0, 1.0]])  # [normal, high]
+            else:
+                return np.array([[1.0, 0.0]])  # [high, normal]
+        else:
+            # For values in normal or near-normal range
+            # If in normal range, ensure it's classified as normal with high confidence
+            min_val = self.normal_range['min']
+            max_val = self.normal_range['max']
+            
+            if min_val <= value <= max_val:
+                if self.classes_[0] == 'normal':
+                    return np.array([[0.99, 0.01]])  # [normal, high]
+                else:
+                    return np.array([[0.01, 0.99]])  # [high, normal]
+            else:
+                # Otherwise use ML model
+                return self.ml_model.predict_proba(X)
+
 app = Flask(__name__)
 CORS(app)  # Enable Cross-Origin Resource Sharing
 
-# Load all models and data
-models_data = load_models()
-model = models_data['main_model']
-factor_models = models_data['factor_models']
-feature_columns = models_data['feature_columns']
-normal_ranges = models_data['normal_ranges']
+# Load the model and required data
+MODEL_PATH = 'pregnancy_vitals_model_improved.joblib'
+FACTOR_MODELS_INFO_PATH = 'factor_models_info.joblib'
+RANGES_PATH = 'normal_ranges.csv'
+
+print(f"Attempting to load model from: {MODEL_PATH}")
+
+# Check if model exists
+if not os.path.exists(MODEL_PATH):
+    # Fall back to original model if improved model doesn't exist
+    print(f"Improved model not found, falling back to original model")
+    MODEL_PATH = 'pregnancy_vitals_model.joblib'
+    if not os.path.exists(MODEL_PATH):
+        raise FileNotFoundError(f"Model file not found: {MODEL_PATH}. Please run main.py or model_training.py first.")
+
+# Load the model
+model = joblib.load(MODEL_PATH)
+print(f"Successfully loaded model from: {MODEL_PATH}")
+
+# Load factor models if available
+factor_models = {}
+if os.path.exists(FACTOR_MODELS_INFO_PATH):
+    factor_models_info = joblib.load(FACTOR_MODELS_INFO_PATH)
+    print(f"Loading factor models from: {factor_models_info['model_paths']}")
+    
+    # Load normal ranges
+    if os.path.exists(factor_models_info['ranges_path']):
+        factor_ranges = joblib.load(factor_models_info['ranges_path'])
+    else:
+        factor_ranges = {}
+    
+    # Load each factor model
+    for factor, model_path in factor_models_info['model_paths'].items():
+        if os.path.exists(model_path):
+            factor_models[factor] = {
+                'model': joblib.load(model_path),
+                'range': factor_ranges.get(factor, {})
+            }
+            print(f"Loaded {factor} model from {model_path}")
+    
+    print(f"Loaded {len(factor_models)} factor models")
+else:
+    print("Factor models info not found. Individual factor risk assessment will not be available.")
+
+# Load the feature columns
+if os.path.exists('feature_columns.txt'):
+    with open('feature_columns.txt', 'r') as f:
+        feature_columns = [line.strip() for line in f.readlines()]
+else:
+    # Default feature columns if file doesn't exist
+    feature_columns = ['pulse', 'respiration', 'temperature', 'systolic', 'diastolic', 'oxygen']
+
+# Load the normal ranges
+if os.path.exists(RANGES_PATH):
+    ranges_df = pd.read_csv(RANGES_PATH)
+    normal_ranges = {}
+    for _, row in ranges_df.iterrows():
+        normal_ranges[row['vital_sign']] = {'min': row['min'], 'max': row['max']}
+else:
+    # Default ranges if file doesn't exist
+    normal_ranges = {
+        'pulse': {'min': 60, 'max': 100},
+        'respiration': {'min': 12, 'max': 20},
+        'temperature': {'min': 35, 'max': 38},
+        'systolic': {'min': 80, 'max': 120},
+        'diastolic': {'min': 80, 'max': 120},
+        'oxygen': {'min': 95, 'max': 100},
+        'glucose': {'min': 3, 'max': 200},
+        'height': {'min': 120, 'max': 200},
+        'weight': {'min': 30, 'max': 200}
+    }
 
 print("Model and data loaded successfully")
 print(f"Feature columns: {feature_columns}")
