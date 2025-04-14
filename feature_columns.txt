@@ -1,0 +1,6 @@
+pulse
+respiration
+temperature
+systolic
+diastolic
+oxygen

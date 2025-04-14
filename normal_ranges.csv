@@ -1,0 +1,10 @@
+vital_sign,min,max
+temperature,35.0,38.0
+pulse,60.0,100.0
+respiration,12.0,20.0
+systolic,80.0,120.0
+diastolic,80.0,120.0
+oxygen,95.0,100.0
+glucose,3.0,200.0
+height,120.0,200.0
+weight,30.0,200.0
