@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: pregnancy-vitals-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn api:app --config gunicorn_config.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0 
