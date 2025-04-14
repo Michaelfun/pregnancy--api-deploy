@@ -10,6 +10,7 @@ keepalive = 5
 accesslog = "-"
 errorlog = "-"
 loglevel = "info"
+preload_app = True
 
 # Server socket
 backlog = 2048
