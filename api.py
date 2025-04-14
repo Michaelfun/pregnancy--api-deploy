@@ -60,8 +60,19 @@ if os.path.exists(FACTOR_MODELS_INFO_PATH):
     # Load each factor model
     for factor, model_path in factor_models_info['model_paths'].items():
         if os.path.exists(model_path):
+            # Load the base model
+            base_model = joblib.load(model_path)
+            
+            # Create a RuleBasedModel instance
+            rule_based_model = RuleBasedModel(
+                ml_model=base_model,
+                factor=factor,
+                thresholds={'low': None, 'high': None},  # You can adjust these thresholds
+                normal_range=factor_ranges.get(factor, {})
+            )
+            
             factor_models[factor] = {
-                'model': joblib.load(model_path),
+                'model': rule_based_model,
                 'range': factor_ranges.get(factor, {})
             }
             print(f"Loaded {factor} model from {model_path}")
