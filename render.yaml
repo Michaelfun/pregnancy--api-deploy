@@ -6,9 +6,10 @@ services:
       python -m venv .venv
       source .venv/bin/activate
       pip install -r requirements.txt
-    startCommand: gunicorn app:app --config gunicorn_config.py
+    startCommand: gunicorn api:app --config gunicorn_config.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: PYTHONPATH
-        value: /opt/render/project/src 
+        value: /opt/render/project/src
+    healthCheckPath: /health 

@@ -7,14 +7,12 @@ and exposes endpoints for making predictions.
 
 import pandas as pd
 import numpy as np
-import joblib
 import json
-import os
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import logging
 import warnings
-from models import RuleBasedModel
+from model_loader import load_models
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -26,88 +24,12 @@ warnings.filterwarnings('ignore')
 app = Flask(__name__)
 CORS(app)  # Enable Cross-Origin Resource Sharing
 
-# Load the model and required data
-MODEL_PATH = 'pregnancy_vitals_model_improved.joblib'
-FACTOR_MODELS_INFO_PATH = 'factor_models_info.joblib'
-RANGES_PATH = 'normal_ranges.csv'
-
-print(f"Attempting to load model from: {MODEL_PATH}")
-
-# Check if model exists
-if not os.path.exists(MODEL_PATH):
-    # Fall back to original model if improved model doesn't exist
-    print(f"Improved model not found, falling back to original model")
-    MODEL_PATH = 'pregnancy_vitals_model.joblib'
-    if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(f"Model file not found: {MODEL_PATH}. Please run main.py or model_training.py first.")
-
-# Load the model
-model = joblib.load(MODEL_PATH)
-print(f"Successfully loaded model from: {MODEL_PATH}")
-
-# Load factor models if available
-factor_models = {}
-if os.path.exists(FACTOR_MODELS_INFO_PATH):
-    factor_models_info = joblib.load(FACTOR_MODELS_INFO_PATH)
-    print(f"Loading factor models from: {factor_models_info['model_paths']}")
-    
-    # Load normal ranges
-    if os.path.exists(factor_models_info['ranges_path']):
-        factor_ranges = joblib.load(factor_models_info['ranges_path'])
-    else:
-        factor_ranges = {}
-    
-    # Load each factor model
-    for factor, model_path in factor_models_info['model_paths'].items():
-        if os.path.exists(model_path):
-            # Load the base model
-            base_model = joblib.load(model_path)
-            
-            # Create a RuleBasedModel instance
-            rule_based_model = RuleBasedModel(
-                ml_model=base_model,
-                factor=factor,
-                thresholds={'low': None, 'high': None},  # You can adjust these thresholds
-                normal_range=factor_ranges.get(factor, {})
-            )
-            
-            factor_models[factor] = {
-                'model': rule_based_model,
-                'range': factor_ranges.get(factor, {})
-            }
-            print(f"Loaded {factor} model from {model_path}")
-    
-    print(f"Loaded {len(factor_models)} factor models")
-else:
-    print("Factor models info not found. Individual factor risk assessment will not be available.")
-
-# Load the feature columns
-if os.path.exists('feature_columns.txt'):
-    with open('feature_columns.txt', 'r') as f:
-        feature_columns = [line.strip() for line in f.readlines()]
-else:
-    # Default feature columns if file doesn't exist
-    feature_columns = ['pulse', 'respiration', 'temperature', 'systolic', 'diastolic', 'oxygen']
-
-# Load the normal ranges
-if os.path.exists(RANGES_PATH):
-    ranges_df = pd.read_csv(RANGES_PATH)
-    normal_ranges = {}
-    for _, row in ranges_df.iterrows():
-        normal_ranges[row['vital_sign']] = {'min': row['min'], 'max': row['max']}
-else:
-    # Default ranges if file doesn't exist
-    normal_ranges = {
-        'pulse': {'min': 60, 'max': 100},
-        'respiration': {'min': 12, 'max': 20},
-        'temperature': {'min': 35, 'max': 38},
-        'systolic': {'min': 80, 'max': 120},
-        'diastolic': {'min': 80, 'max': 120},
-        'oxygen': {'min': 95, 'max': 100},
-        'glucose': {'min': 3, 'max': 200},
-        'height': {'min': 120, 'max': 200},
-        'weight': {'min': 30, 'max': 200}
-    }
+# Load all models and data
+models_data = load_models()
+model = models_data['main_model']
+factor_models = models_data['factor_models']
+feature_columns = models_data['feature_columns']
+normal_ranges = models_data['normal_ranges']
 
 print("Model and data loaded successfully")
 print(f"Feature columns: {feature_columns}")
