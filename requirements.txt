@@ -7,3 +7,4 @@ openpyxl
 joblib
 python-dotenv
 Werkzeug
+gunicorn
