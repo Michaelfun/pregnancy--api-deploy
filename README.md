@@ -14,8 +14,8 @@ No authentication required - just send requests!
 **GET** `/health`
 
 **Example:**
-```bash
-curl https://pregnancy-es8z.onrender.com/health
+```powershell
+(Invoke-WebRequest -Uri "https://pregnancy-es8z.onrender.com/health" -Method GET).Content
 ```
 
 **Response:**
@@ -35,8 +35,8 @@ curl https://pregnancy-es8z.onrender.com/health
 See what values are considered normal for each vital sign.
 
 **Example:**
-```bash
-curl https://pregnancy-es8z.onrender.com/ranges
+```powershell
+(Invoke-WebRequest -Uri "https://pregnancy-es8z.onrender.com/ranges" -Method GET).Content
 ```
 
 **Response:**
@@ -61,17 +61,22 @@ curl https://pregnancy-es8z.onrender.com/ranges
 Analyze one set of vital signs and get risk assessment.
 
 **Request:**
-```bash
-curl -X POST https://pregnancy-es8z.onrender.com/predict \
-  -H "Content-Type: application/json" \
-  -d '{
-    "pulse": 75,
-    "respiration": 16,
-    "temperature": 36.5,
-    "systolic": 120,
-    "diastolic": 80,
-    "oxygen": 98
-  }'
+```powershell
+$body = @{
+  pulse       = 75
+  respiration = 16
+  temperature = 36.5
+  systolic    = 120
+  diastolic   = 80
+  oxygen      = 98
+} | ConvertTo-Json
+
+(Invoke-WebRequest `
+  -Uri "https://pregnancy-es8z.onrender.com/predict" `
+  -Method POST `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body $body
+).Content
 ```
 
 **What to Send:**
@@ -126,27 +131,32 @@ curl -X POST https://pregnancy-es8z.onrender.com/predict \
 Analyze multiple sets of vital signs at once.
 
 **Request:**
-```bash
-curl -X POST https://pregnancy-es8z.onrender.com/batch_predict \
-  -H "Content-Type: application/json" \
-  -d '[
-    {
-      "pulse": 75,
-      "respiration": 16,
-      "temperature": 36.5,
-      "systolic": 120,
-      "diastolic": 80,
-      "oxygen": 98
-    },
-    {
-      "pulse": 110,
-      "respiration": 24,
-      "temperature": 38.5,
-      "systolic": 150,
-      "diastolic": 100,
-      "oxygen": 91
-    }
-  ]'
+```powershell
+$body = @(
+  @{
+    pulse       = 75
+    respiration = 16
+    temperature = 36.5
+    systolic    = 120
+    diastolic   = 80
+    oxygen      = 98
+  },
+  @{
+    pulse       = 110
+    respiration = 24
+    temperature = 38.5
+    systolic    = 150
+    diastolic   = 100
+    oxygen      = 91
+  }
+) | ConvertTo-Json
+
+(Invoke-WebRequest `
+  -Uri "https://pregnancy-es8z.onrender.com/batch_predict" `
+  -Method POST `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body $body
+).Content
 ```
 
 **What to Send:** Array of vital signs objects (same format as single predict)
@@ -316,6 +326,32 @@ All prediction endpoints require these 6 vital signs:
 **Cause:** Missing required fields or invalid data types
 **Solution:** Make sure all 6 vital signs are included and are numbers (not strings)
 
+**PowerShell: print the 400 response body (very useful on Render):**
+```powershell
+try {
+  $body = @{
+    pulse       = 75
+    respiration = 16
+    temperature = 36.5
+    systolic    = 120
+    diastolic   = 80
+    oxygen      = 98
+  } | ConvertTo-Json
+
+  Invoke-WebRequest `
+    -Uri "https://pregnancy-es8z.onrender.com/predict" `
+    -Method POST `
+    -Headers @{ "Content-Type" = "application/json" } `
+    -Body $body `
+    | Out-Null
+}
+catch {
+  "HTTP Status: " + $_.Exception.Response.StatusCode.value__
+  $reader = New-Object System.IO.StreamReader($_.Exception.Response.GetResponseStream())
+  $reader.ReadToEnd()
+}
+```
+
 **Example Error:**
 ```json
 {
@@ -348,3 +384,8 @@ All prediction endpoints require these 6 vital signs:
 | `/batch_predict` | POST | Multiple predictions |
 
 **Base URL:** `https://pregnancy-es8z.onrender.com`
+
+---
+
+## Need Help?
+- Verify API is running: `GET /health`
