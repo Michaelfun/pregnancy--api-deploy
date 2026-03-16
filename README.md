@@ -60,6 +60,12 @@ See what values are considered normal for each vital sign.
 
 Analyze one set of vital signs and get risk assessment.
 
+**Testing Modes (Query Params):**
+- `mode=ml` (default): Uses the trained ML model
+- `mode=rules`: Deterministic testing using `normal_ranges` thresholds (recommended when you want guaranteed `high/medium/low`)
+- `details=true|false` (default `true`): Include or skip `vital_signs_analysis` (set `false` for faster responses)
+- `factor_models=true|false` (default `true`): Include or skip factor model analysis (only used when `details=true`)
+
 **Request:**
 ```powershell
 $body = @{
@@ -72,7 +78,7 @@ $body = @{
 } | ConvertTo-Json
 
 (Invoke-WebRequest `
-  -Uri "https://pregnancy-es8z.onrender.com/predict" `
+  -Uri "https://pregnancy-es8z.onrender.com/predict?mode=ml&details=true&factor_models=true" `
   -Method POST `
   -Headers @{ "Content-Type" = "application/json" } `
   -Body $body
@@ -303,7 +309,24 @@ All prediction endpoints require these 6 vital signs:
   "oxygen": 91
 }
 ```
-**Expected Result:** `risk_level: "high"` or `"medium"`
+**Deterministic Test (PowerShell):**
+```powershell
+$body = @{
+  pulse       = 125
+  respiration = 28
+  temperature = 39.2
+  systolic    = 165
+  diastolic   = 110
+  oxygen      = 88
+} | ConvertTo-Json
+
+(Invoke-WebRequest `
+  -Uri "https://pregnancy-es8z.onrender.com/predict?mode=rules&details=true" `
+  -Method POST `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body $body
+).Content
+```
 
 ### Scenario 3: Low Vitals
 ```json
@@ -316,7 +339,24 @@ All prediction endpoints require these 6 vital signs:
   "oxygen": 93
 }
 ```
-**Expected Result:** `risk_level: "high"` or `"medium"`
+**Deterministic Test (PowerShell):**
+```powershell
+$body = @{
+  pulse       = 110
+  respiration = 24
+  temperature = 36.8
+  systolic    = 118
+  diastolic   = 80
+  oxygen      = 98
+} | ConvertTo-Json
+
+(Invoke-WebRequest `
+  -Uri "https://pregnancy-es8z.onrender.com/predict?mode=rules&details=true" `
+  -Method POST `
+  -Headers @{ "Content-Type" = "application/json" } `
+  -Body $body
+).Content
+```
 
 ---
 
@@ -338,12 +378,12 @@ try {
     oxygen      = 98
   } | ConvertTo-Json
 
-  Invoke-WebRequest `
-    -Uri "https://pregnancy-es8z.onrender.com/predict" `
+  (Invoke-WebRequest `
+    -Uri "https://pregnancy-es8z.onrender.com/predict?mode=ml&details=true&factor_models=true" `
     -Method POST `
     -Headers @{ "Content-Type" = "application/json" } `
-    -Body $body `
-    | Out-Null
+    -Body $body
+  ).Content | Out-Null
 }
 catch {
   "HTTP Status: " + $_.Exception.Response.StatusCode.value__
