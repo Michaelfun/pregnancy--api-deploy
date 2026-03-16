@@ -173,6 +173,52 @@ def _parse_bool(value, default=True):
         return False
     return default
 
+def _risk_from_ranges(record: dict) -> str:
+    """
+    Deterministic risk level based on normal ranges.
+
+    This is useful for predictable UI testing and as a fallback if the ML model
+    is overly biased toward "normal".
+    """
+    vital_columns = ['pulse', 'respiration', 'temperature', 'systolic', 'diastolic', 'oxygen']
+
+    def is_outside(col: str, value) -> bool:
+        if value is None or pd.isna(value):
+            return False
+        try:
+            v = float(value)
+        except Exception:
+            return False
+        r = normal_ranges.get(col)
+        if not r:
+            return False
+        mn = r.get('min')
+        mx = r.get('max')
+        if mn is not None and v < mn:
+            return True
+        if mx is not None and v > mx:
+            return True
+        return False
+
+    high_critical = 0
+    other_abnormal = 0
+    critical = {'temperature', 'oxygen', 'systolic', 'diastolic'}
+
+    for col in vital_columns:
+        if is_outside(col, record.get(col)):
+            if col in critical:
+                high_critical += 1
+            else:
+                other_abnormal += 1
+
+    if high_critical > 0:
+        return 'high'
+    if other_abnormal > 1:
+        return 'medium'
+    if other_abnormal > 0:
+        return 'low'
+    return 'normal'
+
 @app.route('/predict', methods=['POST'])
 def predict():
     """
@@ -185,17 +231,24 @@ def predict():
         # Performance controls (defaults preserve existing behavior)
         details = _parse_bool(request.args.get("details"), default=True)
         include_factor_models = _parse_bool(request.args.get("factor_models"), default=True)
+        mode = (request.args.get("mode") or "ml").strip().lower()
 
         # Build a minimal, ordered feature frame (faster than adding cols in a loop)
         input_df = pd.DataFrame([[data.get(col, np.nan) for col in feature_columns]], columns=feature_columns)
         
         # Make prediction
-        risk_level = model.predict(input_df)[0]
+        if mode == "rules":
+            risk_level = _risk_from_ranges(data)
+        else:
+            risk_level = model.predict(input_df)[0]
         
         # Get probability scores
-        probabilities = model.predict_proba(input_df)[0]
-        classes = CLASSIFIER_CLASSES or list(getattr(model, "classes_", []))
-        prob_dict = {cls: float(prob) for cls, prob in zip(classes, probabilities)}
+        if mode == "rules":
+            prob_dict = {}
+        else:
+            probabilities = model.predict_proba(input_df)[0]
+            classes = CLASSIFIER_CLASSES or list(getattr(model, "classes_", []))
+            prob_dict = {cls: float(prob) for cls, prob in zip(classes, probabilities)}
 
         # Minimal response (fast path)
         response = {
